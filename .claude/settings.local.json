@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(py -m src.smoke_test)"
+    ]
+  }
+}

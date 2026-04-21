@@ -1,0 +1,94 @@
+# ---------------------------------------------------------------------------
+# Data — never commit the source datasets or the packed SQLite bundle.
+# Share data/drowsiness.db via cloud storage, not git.
+# ---------------------------------------------------------------------------
+data/
+datasets/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ---------------------------------------------------------------------------
+# Model artifacts & training outputs
+# ---------------------------------------------------------------------------
+*.pt
+*.pth
+*.onnx
+*.ckpt
+*.safetensors
+checkpoints/
+runs/
+logs/
+wandb/
+mlruns/
+lightning_logs/
+tb_logs/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Distribution / build
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+pip-wheel-metadata/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checkers / linters
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+
+# ---------------------------------------------------------------------------
+# Jupyter
+# ---------------------------------------------------------------------------
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ---------------------------------------------------------------------------
+# Editors / IDEs
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---------------------------------------------------------------------------
+# OS junk
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# ---------------------------------------------------------------------------
+# Local config / secrets (just in case)
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.local
