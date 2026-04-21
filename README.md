@@ -95,16 +95,3 @@ See [`docs/DATASETS.md`](docs/DATASETS.md) for:
 - split strategy (stratified group-wise — same subject never crosses partitions)
 - handling of resolution / colour / label-noise inconsistencies
 
-## Sharing the bundle with teammates
-
-The `drowsiness.db` file is ~3 GB and contains every image's bytes plus
-split / label / source / subject metadata. Teammates only need:
-
-1. The `src/` package
-2. The `data/drowsiness.db` file
-3. `pip install torch opencv-python-headless numpy`
-
-No MRL or DDD folders required on their end. The split is reproducible
-(`seed=42` stored in the bundle's metadata).
-
-Do **not** commit `drowsiness.db` to git — share it via OneDrive / Google Drive.
