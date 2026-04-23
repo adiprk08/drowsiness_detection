@@ -1,0 +1,20 @@
+{
+  "model": "baseline_cnn",
+  "split": "test",
+  "ckpt": "artifacts\\baseline_cnn\\best.pt",
+  "n": 7504,
+  "loss": 1.706630057847894,
+  "accuracy": 0.6405916844349681,
+  "precision_drowsy": 0.6748600632757362,
+  "recall_drowsy": 0.6707789066279632,
+  "f1_drowsy": 0.6728132961300497,
+  "f1_alert": 0.601330376940133,
+  "macro_f1": 0.6370718365350914,
+  "roc_auc": 0.6013961445866155,
+  "confusion": {
+    "tn": 2034,
+    "fp": 1336,
+    "fn": 1361,
+    "tp": 2773
+  }
+}
