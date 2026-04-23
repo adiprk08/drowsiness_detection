@@ -1,0 +1,20 @@
+{
+  "model": "mobilenet_v2",
+  "split": "test",
+  "ckpt": "artifacts\\mobilenet_v2\\best.pt",
+  "n": 7504,
+  "loss": 1.214152931666641,
+  "accuracy": 0.6926972281449894,
+  "precision_drowsy": 0.680990099009901,
+  "recall_drowsy": 0.8318819545234639,
+  "f1_drowsy": 0.748911149825784,
+  "f1_alert": 0.6040521978021978,
+  "macro_f1": 0.6764816738139909,
+  "roc_auc": 0.6641858640584916,
+  "confusion": {
+    "tn": 1759,
+    "fp": 1611,
+    "fn": 695,
+    "tp": 3439
+  }
+}
