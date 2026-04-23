@@ -1,0 +1,20 @@
+{
+  "model": "alexnet",
+  "split": "test",
+  "ckpt": "artifacts\\alexnet\\best.pt",
+  "n": 7504,
+  "loss": 1.3084698769964898,
+  "accuracy": 0.5203891257995735,
+  "precision_drowsy": 0.5802580258025802,
+  "recall_drowsy": 0.4678277697145622,
+  "f1_drowsy": 0.5180125887237178,
+  "f1_alert": 0.5227423418644742,
+  "macro_f1": 0.520377465294096,
+  "roc_auc": 0.5309112821374173,
+  "confusion": {
+    "tn": 1971,
+    "fp": 1399,
+    "fn": 2200,
+    "tp": 1934
+  }
+}
