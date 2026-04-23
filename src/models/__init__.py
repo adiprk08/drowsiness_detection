@@ -26,13 +26,16 @@ import torch.nn as nn
 from .baseline_cnn import BaselineCNN
 from .alexnet_tl import build_alexnet
 from .mobilenet_v2 import build_mobilenet_v2
+from .two_stream import EyeStateCNN, TwoStreamModel
 
-ModelName = Literal["baseline_cnn", "alexnet", "mobilenet_v2"]
+ModelName = Literal["baseline_cnn", "alexnet", "mobilenet_v2", "two_stream"]
 
 __all__ = [
     "BaselineCNN",
     "build_alexnet",
     "build_mobilenet_v2",
+    "EyeStateCNN",
+    "TwoStreamModel",
     "build_model",
     "ModelName",
 ]
@@ -49,6 +52,11 @@ def build_model(name: ModelName, *, pretrained: bool = True,
         return build_alexnet(pretrained=pretrained, freeze_backbone=freeze_backbone)
     if name == "mobilenet_v2":
         return build_mobilenet_v2(pretrained=pretrained, freeze_backbone=freeze_backbone)
+    if name == "two_stream":
+        return TwoStreamModel(
+            pretrained_face=pretrained, freeze_face_backbone=freeze_backbone,
+        )
     raise ValueError(
-        f"Unknown model {name!r}. Choose from: baseline_cnn, alexnet, mobilenet_v2."
+        f"Unknown model {name!r}. Choose from: "
+        f"baseline_cnn, alexnet, mobilenet_v2, two_stream."
     )

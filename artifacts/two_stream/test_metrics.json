@@ -1,0 +1,39 @@
+{
+  "model": "two_stream",
+  "split": "test",
+  "ckpt": "artifacts\\two_stream\\best.pt",
+  "eye_branch": {
+    "n": 16823,
+    "accuracy": 0.904654342269512,
+    "precision_drowsy": 0.8341038171971998,
+    "recall_drowsy": 0.9477712742008104,
+    "f1_drowsy": 0.887312069692286,
+    "f1_alert": 0.9173706985369874,
+    "macro_f1": 0.9023413841146367,
+    "roc_auc": 0.976509585193116,
+    "confusion": {
+      "tn": 8904,
+      "fp": 1256,
+      "fn": 348,
+      "tp": 6315
+    },
+    "confusion_png": "artifacts\\two_stream\\eye_confusion_test.png"
+  },
+  "face_branch": {
+    "n": 7504,
+    "accuracy": 0.5002665245202559,
+    "precision_drowsy": 0.5380650277557494,
+    "recall_drowsy": 0.656507014997581,
+    "f1_drowsy": 0.5914142514709086,
+    "f1_alert": 0.3567753001715266,
+    "macro_f1": 0.4740947758212176,
+    "roc_auc": 0.5965561695084118,
+    "confusion": {
+      "tn": 1040,
+      "fp": 2330,
+      "fn": 1420,
+      "tp": 2714
+    },
+    "confusion_png": "artifacts\\two_stream\\face_confusion_test.png"
+  }
+}
