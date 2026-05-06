@@ -96,3 +96,6 @@ $RECYCLE.BIN/
 .env.*
 !.env.example
 *.local
+
+# Claude Code local state (per-repo permissions cache, etc.)
+.claude/
