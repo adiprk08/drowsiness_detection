@@ -17,6 +17,10 @@ datasets/
 *.onnx
 *.ckpt
 *.safetensors
+
+# Auto-downloaded by src/realtime_demo.py on first run (~3 MB), fetched from
+# storage.googleapis.com/mediapipe-models — no need to ship it.
+artifacts/face_landmarker.task
 checkpoints/
 runs/
 logs/
