@@ -55,6 +55,8 @@ from .models import build_model
 # Right eye from the *person's* perspective (camera's left if front-facing).
 RIGHT_EYE_IDX = [33, 7, 163, 144, 145, 153, 154, 155,
                  133, 173, 157, 158, 159, 160, 161, 246]
+LEFT_EYE_IDX = [263, 249, 390, 373, 374, 380, 381, 382,
+                362, 398, 384, 385, 386, 387, 388, 466]
 
 # 6-point subsets used for Eye Aspect Ratio (Soukupova & Cech 2016).
 # EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|).
@@ -188,7 +190,7 @@ class Smoother:
 # ---------------------------------------------------------------------------
 
 def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None,
-                  eye_bbox: tuple[int, int, int, int] | None,
+                  eye_bboxes: list[tuple[int, int, int, int]],
                   p_face: float | None, p_eye: float | None,
                   ear: float | None, mar: float | None,
                   inst_prob: float | None, smooth_prob: float | None,
@@ -197,8 +199,8 @@ def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None
     if face_bbox is not None:
         x0, y0, x1, y1 = face_bbox
         cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 255, 0), 2)
-    if eye_bbox is not None:
-        x0, y0, x1, y1 = eye_bbox
+    for bbox in eye_bboxes:
+        x0, y0, x1, y1 = bbox
         cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 200, 255), 2)
 
     # Top-left: FPS + per-branch probabilities + fused
@@ -372,7 +374,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                 frame_idx += 1
 
                 face_bbox = None
-                eye_bbox = None
+                eye_bbox = None  # crop fed to the CNN eye branch (right eye)
+                eye_bboxes: list[tuple[int, int, int, int]] = []
                 inst_prob: float | None = None
                 smooth_prob: float | None = None
                 p_face: float | None = None
@@ -397,14 +400,23 @@ def main(argv: Iterable[str] | None = None) -> None:
                         int(xs.max()), int(ys.max()),
                         pad_frac=0.15,
                     )
-                    # Right-eye bbox from its landmark subset
-                    ex = np.array([lms[i].x for i in RIGHT_EYE_IDX]) * w
-                    ey = np.array([lms[i].y for i in RIGHT_EYE_IDX]) * h
-                    eye_crop, eye_bbox = _crop_with_pad(
-                        frame, int(ex.min()), int(ey.min()),
-                        int(ex.max()), int(ey.max()),
-                        pad_frac=0.35,
-                    )
+                    # Eye bboxes — both eyes drawn on the overlay so it
+                    # visibly tracks blinks on either side. Only the right
+                    # eye's crop is fed to the CNN eye branch (it was
+                    # trained on single-eye crops, so feeding both would
+                    # require either two forward passes or stitching).
+                    for idx_set in (RIGHT_EYE_IDX, LEFT_EYE_IDX):
+                        ex = np.array([lms[i].x for i in idx_set]) * w
+                        ey = np.array([lms[i].y for i in idx_set]) * h
+                        crop, bbox = _crop_with_pad(
+                            frame, int(ex.min()), int(ey.min()),
+                            int(ex.max()), int(ey.max()),
+                            pad_frac=0.35,
+                        )
+                        eye_bboxes.append(bbox)
+                        if idx_set is RIGHT_EYE_IDX:
+                            eye_crop = crop
+                            eye_bbox = bbox
 
                     face_tensor = _to_model_input(face_crop, 224, device)
                     eye_tensor = _to_model_input(eye_crop, 64, device)
@@ -423,23 +435,19 @@ def main(argv: Iterable[str] | None = None) -> None:
                         inst_prob = sum(probs) / len(probs)
 
                     # Alarm driver: classical (EAR + MAR) if requested, else
-                    # the CNN fusion. Both EAR and MAR are mapped onto [0, 1]
-                    # severity scores and combined with max() so *either*
-                    # eye-closure OR yawning can raise the alarm. The smoother
-                    # then averages over the rolling window — that average is
-                    # exactly PERCLOS (% eye-closure) when only EAR is firing.
+                    # the CNN fusion. EAR/MAR are converted to BINARY events
+                    # (eye-closed = 1, otherwise = 0) so the smoothed value is
+                    # *literal PERCLOS* — the fraction of recent frames in
+                    # which eyes were closed, which is the well-defined
+                    # drowsiness signal from the trucking-industry literature.
+                    # A typical blink (3–5 frames out of 30) contributes only
+                    # ~10–17% PERCLOS, well below the default --threshold 0.5.
                     if args.use_ear and ear is not None:
-                        ear_score = float(np.clip(
-                            (args.ear_threshold - ear) / args.ear_threshold + 0.5,
-                            0.0, 1.0,
-                        ))
-                        mar_score = 0.0
+                        ear_closed = 1.0 if ear < args.ear_threshold else 0.0
+                        yawning = 0.0
                         if mar is not None:
-                            mar_score = float(np.clip(
-                                (mar - args.mar_threshold) / args.mar_threshold + 0.5,
-                                0.0, 1.0,
-                            ))
-                        drive = max(ear_score, mar_score)
+                            yawning = 1.0 if mar > args.mar_threshold else 0.0
+                        drive = max(ear_closed, yawning)
                         smooth_prob, _ = smoother.push(drive)
                     elif inst_prob is not None:
                         smooth_prob, _ = smoother.push(inst_prob)
@@ -455,7 +463,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                 fps_inst = 1.0 / dt
                 fps_ema = 0.9 * fps_ema + 0.1 * fps_inst if fps_ema else fps_inst
 
-                _draw_overlay(frame, face_bbox, eye_bbox,
+                _draw_overlay(frame, face_bbox, eye_bboxes,
                               p_face, p_eye, ear, mar,
                               inst_prob, smooth_prob,
                               smoother.state_drowsy, fps_ema)
