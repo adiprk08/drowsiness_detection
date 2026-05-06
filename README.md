@@ -30,10 +30,6 @@ drowsiness_detection/
 ├── .gitignore
 ├── check_real_data.py            sanity-check the raw MRL + DDD downloads
 ├── export_dataset.py             pack MRL + DDD into a single SQLite bundle
-├── data/
-│   ├── drowsiness.db             ~3 GB combined dataset (NOT committed)
-│   ├── README.txt                teammate onboarding
-│   └── explore_*.py              early data-exploration starters
 ├── docs/
 │   └── DATASETS.md               source-dataset specs + unification rationale
 ├── src/
@@ -62,7 +58,13 @@ drowsiness_detection/
 ```
 
 Model checkpoints (`*.pt`) and the SQLite bundle (`*.db`) are gitignored
-and shared out-of-band.
+because of size. To get the data:
+
+📦 **Download `drowsiness.db` (~3 GB):** [Google Drive](https://drive.google.com/drive/folders/16uuGogxat70HFd7qErt2KXN_fA6tz-Rv?usp=drive_link)
+
+After cloning the repo, create a `data/` directory in the repo root and
+drop `drowsiness.db` into it — every script expects the bundle at
+`data/drowsiness.db`.
 
 ## Setup
 
