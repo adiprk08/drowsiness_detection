@@ -30,6 +30,7 @@ drowsiness_detection/
 ├── .gitignore
 ├── check_real_data.py            sanity-check the raw MRL + DDD downloads
 ├── export_dataset.py             pack MRL + DDD into a single SQLite bundle
+├── data/                         drowsiness.db — download link below
 ├── docs/
 │   └── DATASETS.md               source-dataset specs + unification rationale
 ├── src/
