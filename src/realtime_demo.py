@@ -27,6 +27,8 @@ Usage
     py -m src.realtime_demo --window 30              # temporal smoothing window
     py -m src.realtime_demo --record out.mp4         # also save an MP4
     py -m src.realtime_demo --video clip.mp4         # run on a file instead of webcam
+    py -m src.realtime_demo --face-ckpt artifacts/mobilenet_v2_finetuned/best.pt
+                                                     # use a fine-tuned webcam-domain checkpoint
 
 Press ``q`` or ``Esc`` in the window to quit.
 """
@@ -239,10 +241,12 @@ def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-def _load_models(device: torch.device, artifacts: Path
+def _load_models(device: torch.device, artifacts: Path,
+                 face_ckpt: Path | None = None,
+                 eye_ckpt: Path | None = None,
                  ) -> tuple[torch.nn.Module, torch.nn.Module]:
-    face_ckpt_path = artifacts / "mobilenet_v2" / "best.pt"
-    two_stream_ckpt_path = artifacts / "two_stream" / "best.pt"
+    face_ckpt_path = Path(face_ckpt) if face_ckpt else artifacts / "mobilenet_v2" / "best.pt"
+    two_stream_ckpt_path = Path(eye_ckpt) if eye_ckpt else artifacts / "two_stream" / "best.pt"
     if not face_ckpt_path.exists():
         sys.exit(f"face checkpoint not found: {face_ckpt_path} — run src.train first")
     if not two_stream_ckpt_path.exists():
@@ -269,6 +273,15 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--record", default=None,
                    help="Path to save the overlay video (mp4). Optional.")
     p.add_argument("--artifacts", default="artifacts")
+    p.add_argument("--face-ckpt", default=None,
+                   help="Override the face model checkpoint path. "
+                        "Default: artifacts/mobilenet_v2/best.pt. Use this to "
+                        "point at the fine-tuned webcam checkpoint, e.g. "
+                        "artifacts/mobilenet_v2_finetuned/best.pt.")
+    p.add_argument("--eye-ckpt", default=None,
+                   help="Override the two-stream checkpoint path "
+                        "(eye branch is taken from it). "
+                        "Default: artifacts/two_stream/best.pt.")
     p.add_argument("--threshold", type=float, default=0.5,
                    help="Decision threshold on smoothed probability.")
     p.add_argument("--window", type=int, default=30,
@@ -309,7 +322,10 @@ def main(argv: Iterable[str] | None = None) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[demo] device={device}")
 
-    face_model, eye_model = _load_models(device, Path(args.artifacts))
+    face_model, eye_model = _load_models(
+        device, Path(args.artifacts),
+        face_ckpt=args.face_ckpt, eye_ckpt=args.eye_ckpt,
+    )
     smoother = Smoother(window=args.window, threshold=args.threshold,
                         hysteresis=args.hysteresis)
 
