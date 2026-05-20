@@ -15,6 +15,12 @@ evaluated on different test subsets (MRL eye crops vs DDD face crops) —
 the numbers aren't directly comparable to a single combined "fused" model
 result, so reporting them side-by-side is the honest thing.
 
+Any ``src.train_combined`` output folders (``<model>_combined``,
+``<model>_uta_only``, ``<model>_ddd_only``) are auto-discovered. Their
+``test_metrics.json`` is nested by evaluation domain, so each produces
+one row per domain (DDD / UTA / combined) — that per-domain breakdown is
+the point of the combined-training experiment.
+
 Usage
 -----
     py -m src.compare                   # print + save with default artifacts/
@@ -43,16 +49,24 @@ def _fmt(x: float | int | None, width: int = 6, prec: int = 4) -> str:
 
 
 def _row(name: str, m: dict, *, threshold: str = "0.5") -> dict:
-    """Pull the headline numbers we want to display for one model."""
+    """Pull the headline numbers we want to display for one model.
+
+    Tolerates two metric schemas:
+      - the flat eval schema  (``accuracy``, ``f1_drowsy``, ``recall_drowsy``,
+        ``precision_drowsy``, ``n``, ``roc_auc``) written by ``src.eval``;
+      - the ``BinaryMetrics`` schema (``acc``, ``f1``, ``recall``,
+        ``precision``) written by ``src.train_combined``.
+    The canonical key wins when both are present.
+    """
     return {
         "model": name,
         "threshold": threshold,
         "n": m.get("n", 0),
-        "accuracy": m.get("accuracy"),
+        "accuracy": m.get("accuracy", m.get("acc")),
         "macro_f1": m.get("macro_f1"),
-        "f1_drowsy": m.get("f1_drowsy"),
-        "recall_drowsy": m.get("recall_drowsy"),
-        "precision_drowsy": m.get("precision_drowsy"),
+        "f1_drowsy": m.get("f1_drowsy", m.get("f1")),
+        "recall_drowsy": m.get("recall_drowsy", m.get("recall")),
+        "precision_drowsy": m.get("precision_drowsy", m.get("precision")),
         "roc_auc": m.get("roc_auc"),
     }
 
@@ -90,6 +104,32 @@ def _read_two_stream(art: Path) -> list[dict]:
         rows.append(_row("two_stream (eye)", test["eye_branch"], threshold="0.50"))
     if "face_branch" in test:
         rows.append(_row("two_stream (face)", test["face_branch"], threshold="0.50"))
+    return rows
+
+
+def _read_combined(art: Path, name: str) -> list[dict]:
+    """Read a ``src.train_combined`` output folder.
+
+    Its ``test_metrics.json`` is a *nested* dict keyed by evaluation
+    domain (``ddd`` / ``uta`` / ``combined``), each value being a flat
+    metrics dict. We emit one table row per domain so the per-domain
+    generalisation story is visible. Falls back to a single row if the
+    file happens to be flat.
+    """
+    test_json = art / name / "test_metrics.json"
+    if not test_json.exists():
+        return []
+    data = json.loads(test_json.read_text())
+    rows: list[dict] = []
+    is_nested = bool(data) and all(isinstance(v, dict) for v in data.values())
+    if is_nested:
+        # Stable, report-friendly domain order; any unexpected key trails.
+        ordered = [d for d in ("ddd", "uta", "combined") if d in data]
+        ordered += [k for k in data if k not in ordered]
+        for domain in ordered:
+            rows.append(_row(f"{name} ({domain})", data[domain], threshold="0.50"))
+    else:
+        rows.append(_row(name, data, threshold="0.50"))
     return rows
 
 
@@ -156,6 +196,19 @@ def main(argv: Iterable[str] | None = None) -> None:
         rows.extend(_read_single_stream(art, name))
     rows.extend(_read_two_stream(art))
 
+    # Auto-discover any other artifact folder with a test_metrics.json —
+    # this picks up src.train_combined outputs (mobilenet_v2_combined,
+    # alexnet_combined, *_uta_only, *_ddd_only, ...) without a hardcoded list.
+    known = set(SINGLE_STREAM) | {"two_stream"}
+    if art.is_dir():
+        extra = sorted(
+            d.name for d in art.iterdir()
+            if d.is_dir() and d.name not in known
+            and (d / "test_metrics.json").exists()
+        )
+        for name in extra:
+            rows.extend(_read_combined(art, name))
+
     if not rows:
         print("[compare] no test_metrics.json found under "
               f"{art} — train + eval first")
@@ -180,7 +233,12 @@ def main(argv: Iterable[str] | None = None) -> None:
         "**Two-stream caveat.** The eye and face branches are evaluated on\n"
         "different held-out subsets (MRL eye crops vs DDD face crops)\n"
         "because no test sample carries both modalities — the rows are not\n"
-        "directly comparable to each other or to a single fused model.\n"
+        "directly comparable to each other or to a single fused model.\n\n"
+        "**Combined-training rows.** Models trained by `src.train_combined`\n"
+        "appear as one row per evaluation domain — `(ddd)` is the original\n"
+        "cabin-camera test split, `(uta)` is the held-out UTA-RLDD webcam\n"
+        "subjects, `(combined)` is both pooled. ROC-AUC is blank for these\n"
+        "rows because `train_combined` records macro-F1 metrics only.\n"
     )
     md_path.write_text(md, encoding="utf-8")
     print(f"[compare] wrote {md_path}")

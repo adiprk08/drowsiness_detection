@@ -20,3 +20,9 @@ that keeps validation drowsy recall ≥ 0.95.
 different held-out subsets (MRL eye crops vs DDD face crops)
 because no test sample carries both modalities — the rows are not
 directly comparable to each other or to a single fused model.
+
+**Combined-training rows.** Models trained by `src.train_combined`
+appear as one row per evaluation domain — `(ddd)` is the original
+cabin-camera test split, `(uta)` is the held-out UTA-RLDD webcam
+subjects, `(combined)` is both pooled. ROC-AUC is blank for these
+rows because `train_combined` records macro-F1 metrics only.
