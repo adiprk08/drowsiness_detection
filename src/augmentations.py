@@ -17,7 +17,14 @@ Choices here are driven by the deployment domain (driver-facing cabin camera):
     won't centre the crop perfectly; this simulates that crop variance
   - cutout: simulates occlusion by hand, hair, sunglasses (small patches only —
     a large cutout could erase the eye signal we're trying to read)
-  - NO vertical flip, NO hue shift (skin-tone invariance we want from data, not aug)
+  - **colour-temperature cast** — scales the red<->blue axis to simulate warm
+    (incandescent / "yellow") vs cool (daylight) lighting. This is an
+    *illumination* property, not an identity one, so augmenting it is the
+    right call — it teaches white-balance invariance the training data
+    (mostly neutral-lit) never showed. Distinct from a hue shift of skin
+    tone, which we still avoid (see below).
+  - NO vertical flip, NO arbitrary hue shift of skin tone (skin-tone
+    diversity we want from data, not aug)
 
 The pipeline is intentionally a single hand-written class rather than an
 ``albumentations`` / ``torchvision.transforms`` stack so the project has one
@@ -50,6 +57,7 @@ class AugPipeline:
         # --- photometric ---
         brightness: float = 0.3,
         contrast: float = 0.3,
+        color_cast: float = 0.20,        # NEW: warm/cool white-balance jitter
         # --- cabin-specific noise ---
         p_motion_blur: float = 0.25,     # NEW: directional motion blur
         motion_blur_kernel_max: int = 9,
@@ -67,6 +75,7 @@ class AugPipeline:
         self.scale_range = scale_range
         self.brightness = brightness
         self.contrast = contrast
+        self.color_cast = color_cast
         self.p_motion_blur = p_motion_blur
         self.motion_blur_kernel_max = motion_blur_kernel_max
         self.p_jpeg = p_jpeg
@@ -122,6 +131,27 @@ class AugPipeline:
         M[1, 2] += ty
         return cv2.warpAffine(img, M, (w, h), borderMode=cv2.BORDER_REFLECT_101)
 
+    def _apply_color_cast(self, img: np.ndarray) -> np.ndarray:
+        """Simulate warm/cool illumination (colour-temperature shift).
+
+        Scales the two outer channels in opposite directions. Under either
+        BGR or RGB ordering that is a blue<->red cast — exactly the axis
+        along which incandescent ('yellow') vs daylight light differ. The
+        shift is symmetric and random, so the *set* of augmentations is
+        identical regardless of channel order: this stays channel-agnostic
+        like the rest of the pipeline. The middle (green) channel — closest
+        to luminance — is left untouched.
+
+        This is what makes the model robust to warm indoor lighting; the
+        training data (DDD + UTA) is mostly neutral-lit, so without this
+        the model sees a yellow-lit face as out-of-distribution.
+        """
+        shift = self.rng.uniform(-self.color_cast, self.color_cast)
+        img = img.astype(np.float32)
+        img[:, :, 0] *= (1.0 + shift)
+        img[:, :, 2] *= (1.0 - shift)
+        return np.clip(img, 0, 255).astype(np.uint8)
+
     # ------------------------------------------------------------------
     # Pipeline
     # ------------------------------------------------------------------
@@ -153,6 +183,10 @@ class AugPipeline:
             alpha = 1.0 + self.rng.uniform(-self.contrast, self.contrast)
             beta = 255.0 * self.rng.uniform(-self.brightness, self.brightness)
             img = np.clip(img.astype(np.float32) * alpha + beta, 0, 255).astype(np.uint8)
+
+        # Colour-temperature cast (warm <-> cool white balance)
+        if self.color_cast > 0:
+            img = self._apply_color_cast(img)
 
         # Motion blur (directional)
         if self.rng.random() < self.p_motion_blur:
