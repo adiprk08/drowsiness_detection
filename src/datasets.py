@@ -708,6 +708,23 @@ class SQLiteDrowsinessDataset(Dataset):
         if not self.samples:
             raise ValueError(f"No samples found in split={split!r} of {db_path}")
 
+    # -- pickle support ----------------------------------------------------
+    # On Windows / Python 3.14+, DataLoader worker processes are *spawned*,
+    # which pickles the whole Dataset to each worker. ``threading.local()``
+    # (and any live sqlite handles it holds) cannot be pickled — and must
+    # not cross a process boundary anyway, since each worker needs its own
+    # connection. So we drop ``_local`` on pickle and recreate a fresh,
+    # empty one on unpickle; ``_conn()`` then lazily reopens per process.
+
+    def __getstate__(self) -> dict:
+        state = self.__dict__.copy()
+        state.pop("_local", None)
+        return state
+
+    def __setstate__(self, state: dict) -> None:
+        self.__dict__.update(state)
+        self._local = threading.local()
+
     def __len__(self) -> int:
         return len(self.samples)
 
