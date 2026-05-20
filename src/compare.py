@@ -157,14 +157,17 @@ def _plain_table(rows: list[dict]) -> str:
     """Fixed-width text table for pasting into the terminal / a code block."""
     headers = ["Model", "Thr", "N", "Acc", "mF1",
                "F1d", "Rd", "Pd", "AUC"]
-    widths = [22, 6, 6, 7, 7, 7, 7, 7, 7]
+    # Model column wide enough for the longest combined-run row name,
+    # e.g. "baseline_cnn_combined (combined)".
+    name_w = max(32, *(len(r["model"]) for r in rows)) if rows else 32
+    widths = [name_w, 6, 6, 7, 7, 7, 7, 7, 7]
     out = []
     line = "  ".join(f"{h:<{w}}" for h, w in zip(headers, widths))
     out.append(line)
     out.append("-" * len(line))
     for r in rows:
         cells = [
-            f"{r['model']:<22}",
+            f"{r['model']:<{name_w}}",
             f"{r['threshold']:>6}",
             f"{r['n']:>6d}",
             _fmt(r["accuracy"], width=7, prec=4),
