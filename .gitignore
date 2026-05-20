@@ -99,3 +99,6 @@ $RECYCLE.BIN/
 
 # Claude Code local state (per-repo permissions cache, etc.)
 .claude/
+
+# Personal working notes — kept local, not shared with the repo.
+handoff.md
