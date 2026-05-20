@@ -27,8 +27,10 @@ Usage
     py -m src.realtime_demo --window 30              # temporal smoothing window
     py -m src.realtime_demo --record out.mp4         # also save an MP4
     py -m src.realtime_demo --video clip.mp4         # run on a file instead of webcam
-    py -m src.realtime_demo --face-ckpt artifacts/mobilenet_v2_finetuned/best.pt
-                                                     # use a fine-tuned webcam-domain checkpoint
+    py -m src.realtime_demo --face-ckpt PATH         # override the face checkpoint
+
+The face model defaults to the DDD+UTA combined checkpoint
+(``artifacts/mobilenet_v2_combined/best.pt``).
 
 Press ``q`` or ``Esc`` in the window to quit.
 """
@@ -209,8 +211,8 @@ def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None
     lines = [f"FPS: {fps:5.1f}"]
     lines.append(f"P face: {p_face:.2f}" if p_face is not None else "P face: --")
     lines.append(f"P eye : {p_eye:.2f}" if p_eye is not None else "P eye : --")
-    lines.append(f"EAR   : {ear:.2f}" if ear is not None else "EAR   : --")
-    lines.append(f"MAR   : {mar:.2f}" if mar is not None else "MAR   : --")
+    # EAR / MAR are still computed (and still drive --use-ear mode) but kept
+    # off the overlay — they were diagnostic clutter for the CNN demo.
     if inst_prob is not None:
         lines.append(f"inst   P: {inst_prob:.2f}")
     if smooth_prob is not None:
@@ -245,10 +247,11 @@ def _load_models(device: torch.device, artifacts: Path,
                  face_ckpt: Path | None = None,
                  eye_ckpt: Path | None = None,
                  ) -> tuple[torch.nn.Module, torch.nn.Module]:
-    face_ckpt_path = Path(face_ckpt) if face_ckpt else artifacts / "mobilenet_v2" / "best.pt"
+    # Default to the DDD+UTA combined model — the deployment checkpoint.
+    face_ckpt_path = Path(face_ckpt) if face_ckpt else artifacts / "mobilenet_v2_combined" / "best.pt"
     two_stream_ckpt_path = Path(eye_ckpt) if eye_ckpt else artifacts / "two_stream" / "best.pt"
     if not face_ckpt_path.exists():
-        sys.exit(f"face checkpoint not found: {face_ckpt_path} — run src.train first")
+        sys.exit(f"face checkpoint not found: {face_ckpt_path} — run src.train_combined first")
     if not two_stream_ckpt_path.exists():
         sys.exit(f"two-stream checkpoint not found: {two_stream_ckpt_path} — run src.train_fusion first")
 
@@ -275,9 +278,8 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--artifacts", default="artifacts")
     p.add_argument("--face-ckpt", default=None,
                    help="Override the face model checkpoint path. "
-                        "Default: artifacts/mobilenet_v2/best.pt. Use this to "
-                        "point at the fine-tuned webcam checkpoint, e.g. "
-                        "artifacts/mobilenet_v2_finetuned/best.pt.")
+                        "Default: artifacts/mobilenet_v2_combined/best.pt "
+                        "(the DDD+UTA combined model).")
     p.add_argument("--eye-ckpt", default=None,
                    help="Override the two-stream checkpoint path "
                         "(eye branch is taken from it). "
