@@ -1,26 +1,47 @@
 # Driver Drowsiness Detection
 
 ENGG2112 group project. A deep-learning pipeline that detects driver
-drowsiness from a cabin-facing camera, with a real-time webcam demo
-combining trained CNN classifiers and classical landmark-based signals.
+drowsiness from face imagery, with a real-time webcam demo built on a
+MobileNetV2 classifier trained across two complementary public datasets.
 
-## Headline result
+## Results
 
-MobileNetV2 with cabin-camera-aware augmentation reached **70.5% macro-F1**
-and **99.4% drowsy recall at the safety operating point** on a fully
-held-out, subject-disjoint test set of 7,504 frames.
+The project ran two experiments.
 
-| Model              | Threshold | Macro-F1 | Drowsy recall | ROC-AUC |
-| ------------------ | --------- | -------- | ------------- | ------- |
-| BaselineCNN        | 0.50      | 0.637    | 0.671         | 0.601   |
-| AlexNet (TL)       | 0.50      | 0.520    | 0.468         | 0.531   |
-| **MobileNetV2 (TL)**   | **0.50**  | **0.705**| **0.870**     | **0.663** |
-| MobileNetV2 (TL)   | safety    | 0.566    | **0.994**     | —       |
-| Two-stream (eye)   | 0.50      | 0.902    | 0.948         | 0.977   |
-| Two-stream (face)  | 0.50      | 0.474    | 0.657         | 0.597   |
+**Experiment 1 — architecture comparison (DDD only).** Four architectures
+trained and evaluated on the cabin-camera Driver Drowsiness Dataset (DDD):
 
-Full table at [`artifacts/comparison.md`](artifacts/comparison.md).
-Re-generate with `py -m src.compare`.
+| Model                     | Macro-F1 | Drowsy recall | ROC-AUC |
+| ------------------------- | -------- | ------------- | ------- |
+| BaselineCNN               | 0.637    | 0.671         | 0.601   |
+| AlexNet (TL)              | 0.520    | 0.468         | 0.531   |
+| MobileNetV2 (TL)          | 0.705    | 0.870         | 0.663   |
+| Two-stream — eye branch   | 0.902    | 0.948         | 0.977   |
+| Two-stream — face branch  | 0.474    | 0.657         | 0.597   |
+
+**Experiment 2 — combined training (DDD + UTA-RLDD).** The DDD-trained
+models saturate on consumer-webcam footage — a distribution-shift gap. We
+integrated UTA-RLDD (48 subjects self-recorded on phones/webcams) and
+retrained the three single-stream architectures on the union of the two
+datasets, reporting test macro-F1 separately per domain:
+
+| Model               | DDD test | UTA test | Combined |
+| ------------------- | -------- | -------- | -------- |
+| BaselineCNN         | 0.826    | 0.597    | 0.712    |
+| AlexNet (TL)        | 0.845    | 0.604    | 0.736    |
+| **MobileNetV2 (TL)**| **0.820**| **0.746**| **0.783**|
+
+All numbers are macro-F1 at threshold 0.5 on fully held-out,
+subject-disjoint test sets. Adding UTA-RLDD improved DDD performance for
+both transfer-learning models (MobileNetV2 0.705 → 0.820), and AlexNet's
+Experiment-1 collapse turned out to be data-bound rather than
+architectural — it recovers to 0.736 with the larger subject pool.
+
+The **deployment model is MobileNetV2 trained on the combined set** —
+near-tied with AlexNet on accuracy, but 5× smaller and stronger on the
+held-out webcam domain. Full table at
+[`artifacts/comparison.md`](artifacts/comparison.md); regenerate with
+`py -m src.compare`.
 
 ## Layout
 
@@ -30,42 +51,57 @@ drowsiness_detection/
 ├── .gitignore
 ├── check_real_data.py            sanity-check the raw MRL + DDD downloads
 ├── export_dataset.py             pack MRL + DDD into a single SQLite bundle
-├── data/                         drowsiness.db — download link below
+├── data/                         drowsiness.db + UTA-RLDD frames — see below
 ├── docs/
 │   └── DATASETS.md               source-dataset specs + unification rationale
 ├── src/
 │   ├── datasets.py               two-stream Dataset + SQLite reader + splitting
-│   ├── data_single_stream.py     face-only view used by Models 1–3
-│   ├── augmentations.py          cabin-camera-aware augmentation pipeline
+│   ├── data_single_stream.py     face-only view of the SQLite bundle
+│   ├── uta_rldd.py               UTA-RLDD video → face-crop extractor + dataset
+│   ├── augmentations.py          geometric + photometric + colour-temperature augmentation
 │   ├── models/
 │   │   ├── baseline_cnn.py       Model 1 — from-scratch CNN
 │   │   ├── alexnet_tl.py         Model 2 — AlexNet transfer learning
 │   │   ├── mobilenet_v2.py       Model 3 — MobileNetV2 transfer learning
 │   │   └── two_stream.py         Model 4 — eye + face fusion
-│   ├── train.py                  trains BaselineCNN / AlexNet / MobileNetV2
+│   ├── train.py                  trains single-stream models on DDD
+│   ├── train_combined.py         trains single-stream models on DDD + UTA-RLDD
 │   ├── train_fusion.py           trains the two-stream fusion model
 │   ├── eval.py                   test-set evaluation for single-stream models
 │   ├── eval_fusion.py            per-branch test-set evaluation for two-stream
 │   ├── calibrate.py              threshold sweep + safety operating point
 │   ├── compare.py                renders artifacts/comparison.md
-│   ├── realtime_demo.py          live webcam demo with EAR/MAR + smoothing
+│   ├── realtime_demo.py          live single-stream webcam demo
 │   └── smoke_test.py             synthetic-data sanity check
 └── artifacts/                    saved metrics, confusion matrices, calibration
-    ├── baseline_cnn/
-    ├── alexnet/
-    ├── mobilenet_v2/
+    ├── baseline_cnn/  alexnet/  mobilenet_v2/        DDD-only runs
+    ├── baseline_cnn_combined/  alexnet_combined/  mobilenet_v2_combined/
     ├── two_stream/
     └── comparison.md             side-by-side test results
 ```
 
 Model checkpoints (`*.pt`) and the SQLite bundle (`*.db`) are gitignored
-because of size. To get the data:
+because of size.
+
+## Datasets
+
+This project uses three public datasets. See
+[`docs/DATASETS.md`](docs/DATASETS.md) for full specs.
+
+**MRL Eye + DDD** are packed into a single SQLite bundle:
 
 📦 **Download `drowsiness.db` (~3 GB):** [Google Drive](https://drive.google.com/drive/folders/16uuGogxat70HFd7qErt2KXN_fA6tz-Rv?usp=drive_link)
 
-After cloning the repo, create a `data/` directory in the repo root and
-drop `drowsiness.db` into it — every script expects the bundle at
-`data/drowsiness.db`.
+After cloning, create `data/` in the repo root and drop `drowsiness.db`
+into it — every script expects the bundle at `data/drowsiness.db`.
+
+**UTA-RLDD** is a separate ~85 GB video dataset
+([Kaggle: `rishab260/uta-reallife-drowsiness-dataset`](https://www.kaggle.com/datasets/rishab260/uta-reallife-drowsiness-dataset)).
+Download and extract it to `data/uta-rldd/`, then run the frame extractor
+(step 4 below) to produce `data/uta_rldd_frames/`. Cite the original
+paper, not the Kaggle mirror: Ghoddoosian, Galib & Athitsos, *"A Realistic
+Dataset and Baseline Temporal Model for Early Drowsiness Detection"*,
+CVPRW 2019.
 
 ## Setup
 
@@ -82,83 +118,92 @@ py -m pip install torch torchvision --index-url https://download.pytorch.org/whl
 
 ## How to run
 
-### 1. Build the unified dataset bundle
+### 1. Build the unified MRL + DDD bundle
 
 ```powershell
 py export_dataset.py --overwrite
 ```
 
-This packs the raw MRL Eye and Driver Drowsiness datasets into a single
-SQLite file at `data/drowsiness.db` (~3 GB). The file is gitignored and
-shared between teammates out-of-band.
+Packs the raw MRL Eye and Driver Drowsiness datasets into a single SQLite
+file at `data/drowsiness.db` (~3 GB).
 
-### 2. Train a single-stream face model
+### 2. Experiment 1 — train the single-stream models on DDD
 
 ```powershell
-py -m src.train --model mobilenet_v2 --epochs 15 --batch-size 128 --num-workers 0
+py -m src.train --model mobilenet_v2 --epochs 15
 ```
 
-Replace `mobilenet_v2` with `baseline_cnn` or `alexnet` for the other two
-architectures. Use `--no-augment` to disable the cabin-camera augmentation
-pipeline (used to measure its contribution: +0.029 macro-F1 on MobileNetV2).
-Results are saved to `artifacts/<model>/`.
+Replace `mobilenet_v2` with `baseline_cnn` or `alexnet`. `--no-augment`
+disables the augmentation pipeline. Results land in `artifacts/<model>/`.
 
 ### 3. Train the two-stream fusion model
 
 ```powershell
-py -m src.train_fusion --epochs 15 --batch-size 128 --num-workers 0
+py -m src.train_fusion --epochs 15
 ```
 
-### 4. Evaluate on the test set
+### 4. Extract UTA-RLDD face frames
 
 ```powershell
-py -m src.eval --model mobilenet_v2 --num-workers 0 --batch-size 256
-py -m src.eval_fusion --num-workers 0 --batch-size 256
+py -m src.uta_rldd extract          # data/uta-rldd/ → data/uta_rldd_frames/
+py -m src.uta_rldd stats            # report extracted-frame counts
 ```
 
-Generates `test_metrics.json` and a confusion-matrix PNG per model.
+Samples each video at ~1 fps, crops the face with MediaPipe, and writes
+224×224 JPEGs. Resumable per-video. ~54k frames across 48 subjects.
 
-### 5. Calibrate thresholds (single-stream models only)
+### 5. Experiment 2 — train the combined (DDD + UTA-RLDD) models
 
 ```powershell
-py -m src.calibrate --model mobilenet_v2 --num-workers 0
+py -m src.train_combined --model mobilenet_v2 --epochs 10
 ```
 
-Sweeps thresholds from 0.05 to 0.95 on validation, picks two operating
-points (best macro-F1 and the largest threshold keeping val drowsy recall
-≥ 0.95), and re-evaluates on test at each.
+Trains on the union of DDD (from the SQLite bundle) and UTA-RLDD (from the
+extracted frames), reporting test metrics per domain. Output goes to
+`artifacts/<model>_combined/`. `--uta-only` / `--ddd-only` run the
+single-dataset ablations.
 
-### 6. Render the comparison table
+### 6. Evaluate and calibrate (Experiment-1 models)
+
+```powershell
+py -m src.eval --model mobilenet_v2
+py -m src.eval_fusion
+py -m src.calibrate --model mobilenet_v2
+```
+
+`calibrate` sweeps the decision threshold on validation and picks a safety
+operating point (largest threshold keeping val drowsy recall ≥ 0.95).
+
+### 7. Render the comparison table
 
 ```powershell
 py -m src.compare
 ```
 
-Reads every `artifacts/<model>/test_metrics.json` and writes
+Auto-discovers every `artifacts/*/test_metrics.json` — DDD-only runs,
+combined runs, and the two-stream model — and writes
 `artifacts/comparison.md`.
 
-### 7. Run the real-time demo
+### 8. Run the real-time demo
 
 ```powershell
-py -m src.realtime_demo --use-ear
+py -m src.realtime_demo
 ```
 
-On first run, downloads MediaPipe's `face_landmarker.task` (~3 MB) into
-`artifacts/`. Press `q` or `Esc` to quit. Useful flags:
+Runs the deployment model (`artifacts/mobilenet_v2_combined/best.pt`) live
+on the webcam. On first run, downloads MediaPipe's `face_landmarker.task`
+(~3 MB) into `artifacts/`. Press `q` or `Esc` to quit. Useful flags:
 
-| Flag                  | Default | Purpose                                                                |
-| --------------------- | ------- | ---------------------------------------------------------------------- |
-| `--use-ear`           | off     | Drive the alarm decision from EAR/MAR instead of CNN fusion            |
-| `--threshold`         | 0.5     | Smoothed-PERCLOS threshold for the alarm                               |
-| `--window`            | 30      | Smoothing window in frames (≈ 1 second at 30 fps)                      |
-| `--hysteresis`        | 3       | Consecutive frames required to switch ALERT ↔ DROWSY                   |
-| `--ear-threshold`     | 0.20    | Eye Aspect Ratio below this counts as eyes-closed                      |
-| `--mar-threshold`     | 0.55    | Mouth Aspect Ratio above this counts as yawning                        |
-| `--face-only`         | off     | Disable the eye branch                                                 |
-| `--eye-only`          | off     | Disable the face model                                                 |
-| `--camera N`          | 0       | Webcam index                                                           |
-| `--video file.mp4`    | —       | Run on a video file instead of webcam                                  |
-| `--record out.mp4`    | —       | Save the annotated overlay to disk                                     |
+| Flag                | Default                | Purpose                                          |
+| ------------------- | ---------------------- | ------------------------------------------------ |
+| `--face-ckpt PATH`  | mobilenet_v2_combined  | Override the face-model checkpoint               |
+| `--threshold`       | 0.5                    | Decision threshold on the smoothed probability   |
+| `--window`          | 30                     | Smoothing window in frames (≈ 1 second at 30 fps)|
+| `--hysteresis`      | 3                      | Consecutive frames required to switch ALERT ↔ DROWSY |
+| `--camera N`        | 0                      | Webcam index                                     |
+| `--video file.mp4`  | —                      | Run on a video file instead of webcam            |
+| `--record out.mp4`  | —                      | Save the annotated overlay to disk               |
+| `--show-fps`        | off                    | Print FPS to stdout each second                  |
 
 ## Live demo pipeline
 
@@ -166,37 +211,39 @@ On first run, downloads MediaPipe's `face_landmarker.task` (~3 MB) into
 webcam frame
    │
    ▼
-MediaPipe FaceLandmarker (478 points)
+MediaPipe FaceLandmarker (478 points)  ──►  face crop (224×224)
    │
-   ├─► face crop (224x224)  ──► MobileNetV2  ──► P_face
+   ▼
+MobileNetV2 (DDD + UTA-RLDD combined)  ──►  P(drowsy)
    │
-   ├─► eye crop (64x64)     ──► EyeStateCNN  ──► P_eye
+   ▼
+rolling smoother (window frames)  ──►  smoothed probability
    │
-   ├─► EAR per eye          ──► binary "eye closed" event
-   │
-   └─► MAR                  ──► binary "yawn" event
-                                       │
-                                       ▼
-                       max(events)  →  rolling smoother (PERCLOS)
-                                       │
-                                       ▼
-                              hysteresis  →  ALERT / DROWSY
+   ▼
+hysteresis  ──►  ALERT / DROWSY
 ```
+
+Temporal smoothing averages out brief blinks (3–5 frames in a 30-frame
+window is only ~10–17%) while holding onto sustained eye closure;
+hysteresis requires several consecutive smoothed samples to cross the
+threshold before the alarm state flips, which stops flickering.
 
 ## Limitations
 
-The CNN models were trained on cabin-camera (DDD) and controlled-condition
-(MRL) imagery. On a laptop webcam at desk distance the visual distribution
-differs enough that both models saturate — `P_face` pins near 1.0 and
-`P_eye` near 0.1 regardless of actual state. EAR and MAR, computed
-geometrically from MediaPipe landmarks, remain accurate. The deployed demo
-uses `--use-ear` to drive the alarm decision from the classical signals
-while keeping the CNN probabilities visible for diagnostic purposes.
-
-A real cabin deployment would not have this gap because the deployment
-camera matches the training distribution. Closing it for consumer webcams
-would require training on more diverse cameras and lighting conditions —
-flagged as future work.
+- **Distribution shift, largely closed.** The Experiment-1 models, trained
+  only on cabin-camera (DDD) imagery, saturate on consumer webcams.
+  Integrating UTA-RLDD — consumer webcam/phone footage — closed most of
+  this gap: the combined MobileNetV2 reaches 0.746 macro-F1 on held-out
+  UTA subjects and the live demo tracks eye state under normal lighting.
+- **Subtle drowsiness is hard frame-wise.** UTA-RLDD labels whole videos,
+  so individual "drowsy" frames are noisy, and its drowsiness is subtle by
+  design. Single-frame classification has a ceiling here; temporal
+  modelling (à la the original UTA-RLDD paper) is the natural next step.
+  The inference-time smoother partially compensates.
+- **Colour-temperature sensitivity.** The model is robust under neutral
+  light; strong warm ("yellow") indoor lighting can still degrade it
+  despite colour-temperature augmentation. Per-device calibration would
+  close this — standard practice for production driver-monitoring systems.
 
 ## Loading the dataset programmatically
 
@@ -209,10 +256,10 @@ val_ds   = SQLiteDrowsinessDataset("data/drowsiness.db", split="val")
 test_ds  = SQLiteDrowsinessDataset("data/drowsiness.db", split="test")
 
 sampler = make_weighted_sampler(train_ds.samples)
-loader  = DataLoader(train_ds, batch_size=64, sampler=sampler, num_workers=0)
+loader  = DataLoader(train_ds, batch_size=64, sampler=sampler, num_workers=4)
 ```
 
-Each sample is a dict:
+Each SQLite sample is a dict:
 
 ```python
 {
@@ -225,15 +272,20 @@ Each sample is a dict:
 }
 ```
 
-The masks are what let a single model train on two structurally different
-datasets — the loss for a sample is only computed on the stream whose mask
-is 1.
+The masks let a single model train on two structurally different datasets
+— a sample's loss is computed only on the stream whose mask is 1.
 
-For face-only training (Models 1–3), use `FaceStreamDataset` from
-`src/data_single_stream.py`, which filters the bundle to DDD face frames
-and returns plain `(image, label)` tuples.
+Convenience wrappers, both yielding plain `(image, label)` tuples:
+
+- `FaceStreamDataset` (`src/data_single_stream.py`) — DDD face frames from
+  the SQLite bundle, used by the single-stream models.
+- `UtaRldDataset` (`src/uta_rldd.py`) — UTA-RLDD face crops from the
+  extracted-frames tree, with a subject-disjoint split.
+
+`src/train_combined.py` concatenates the two for combined training.
 
 ## Dataset details
 
 See [`docs/DATASETS.md`](docs/DATASETS.md) for source-dataset specs, label
-unification, two-stream input strategy, and split rationale.
+unification, the two-stream input strategy, UTA-RLDD integration, and
+split rationale.
