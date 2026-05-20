@@ -4,19 +4,17 @@ What this does
 --------------
 1. Opens the webcam and reads frames at whatever FPS the camera delivers.
 2. Runs the MediaPipe ``FaceLandmarker`` (Tasks API, 478 landmarks) on each
-   frame to locate the face + eye regions.
-3. Crops the face (224×224 letterboxed) and one eye (64×64 letterboxed).
-4. Feeds the face crop to the single-stream MobileNetV2 (``artifacts/mobilenet_v2/best.pt``).
-5. Feeds the eye crop to the two-stream model's eye branch (``artifacts/two_stream/best.pt``).
-6. Fuses the two probabilities (simple mean of sigmoids).
-7. Maintains a rolling buffer of the last ``window`` predictions — the
-   **temporal smoothing** that our project's write-up has promised all
-   along. A blink (1–3 frames of "drowsy") gets averaged out; sustained
-   drowsiness (15+ of 30 frames above threshold) is held onto.
-8. Applies **hysteresis**: we don't flip the alarm state on a single
+   frame to locate the face.
+3. Crops the face (224×224 letterboxed).
+4. Feeds the face crop to the single-stream MobileNetV2 deployment model
+   (``artifacts/mobilenet_v2_combined/best.pt`` — trained on DDD + UTA-RLDD).
+5. Maintains a rolling buffer of the last ``window`` predictions — the
+   **temporal smoothing**. A blink (1–3 frames of "drowsy") gets averaged
+   out; sustained drowsiness (15+ of 30 frames above threshold) is held onto.
+6. Applies **hysteresis**: we don't flip the alarm state on a single
    smoothed sample crossing the threshold — we require ``hysteresis``
    consecutive samples above/below the threshold. Stops flickering.
-9. Draws a live overlay: face bounding box, instantaneous probability,
+7. Draws a live overlay: face bounding box, per-frame probability,
    smoothed probability, current state (ALERT / DROWSY).
 
 Usage
@@ -53,15 +51,8 @@ from .models import build_model
 
 
 # ---------------------------------------------------------------------------
-# MediaPipe landmark indices — FaceLandmarker 478-point model.
+# MediaPipe FaceLandmarker model.
 # ---------------------------------------------------------------------------
-# The full mesh gives us hundreds of points; we only need a few.
-# Right eye from the *person's* perspective (camera's left if front-facing).
-RIGHT_EYE_IDX = [33, 7, 163, 144, 145, 153, 154, 155,
-                 133, 173, 157, 158, 159, 160, 161, 246]
-LEFT_EYE_IDX = [263, 249, 390, 373, 374, 380, 381, 382,
-                362, 398, 384, 385, 386, 387, 388, 466]
-
 # Auto-downloaded on first run if missing. The float16 bundle is ~3 MB and
 # gives us 478 landmarks (including refined lips/eyes), which is what the
 # older ``solutions.face_mesh`` API returned internally anyway.
@@ -153,28 +144,17 @@ class Smoother:
 # ---------------------------------------------------------------------------
 
 def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None,
-                  eye_bboxes: list[tuple[int, int, int, int]],
-                  p_face: float | None, p_eye: float | None,
-                  inst_prob: float | None, smooth_prob: float | None,
+                  p_face: float | None, smooth_prob: float | None,
                   drowsy: bool, fps: float) -> None:
     h, w = frame.shape[:2]
     if face_bbox is not None:
         x0, y0, x1, y1 = face_bbox
         cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 255, 0), 2)
-    for bbox in eye_bboxes:
-        x0, y0, x1, y1 = bbox
-        cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 200, 255), 2)
 
-    # Top-left: FPS + per-branch probabilities + fused
+    # Top-left: FPS + per-frame probability + smoothed value
     lines = [f"FPS: {fps:5.1f}"]
     lines.append(f"P face: {p_face:.2f}" if p_face is not None else "P face: --")
-    lines.append(f"P eye : {p_eye:.2f}" if p_eye is not None else "P eye : --")
-    if inst_prob is not None:
-        lines.append(f"inst   P: {inst_prob:.2f}")
-    if smooth_prob is not None:
-        lines.append(f"smooth P: {smooth_prob:.2f}")
-    else:
-        lines.append("smooth P: --")
+    lines.append(f"smooth P: {smooth_prob:.2f}" if smooth_prob is not None else "smooth P: --")
     y = 28
     for line in lines:
         cv2.putText(frame, line, (10, y), cv2.FONT_HERSHEY_SIMPLEX,
@@ -201,28 +181,17 @@ def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None
 
 def _load_models(device: torch.device, artifacts: Path,
                  face_ckpt: Path | None = None,
-                 eye_ckpt: Path | None = None,
-                 ) -> tuple[torch.nn.Module, torch.nn.Module]:
+                 ) -> torch.nn.Module:
     # Default to the DDD+UTA combined model — the deployment checkpoint.
     face_ckpt_path = Path(face_ckpt) if face_ckpt else artifacts / "mobilenet_v2_combined" / "best.pt"
-    two_stream_ckpt_path = Path(eye_ckpt) if eye_ckpt else artifacts / "two_stream" / "best.pt"
     if not face_ckpt_path.exists():
         sys.exit(f"face checkpoint not found: {face_ckpt_path} — run src.train_combined first")
-    if not two_stream_ckpt_path.exists():
-        sys.exit(f"two-stream checkpoint not found: {two_stream_ckpt_path} — run src.train_fusion first")
 
     print(f"[demo] loading face model from {face_ckpt_path}")
     face_model = build_model("mobilenet_v2", pretrained=False,
                              freeze_backbone=False).to(device).eval()
     face_model.load_state_dict(torch.load(face_ckpt_path, map_location=device)["state_dict"])
-
-    print(f"[demo] loading two-stream (for eye branch) from {two_stream_ckpt_path}")
-    two_stream = build_model("two_stream", pretrained=False,
-                             freeze_backbone=False).to(device).eval()
-    two_stream.load_state_dict(torch.load(two_stream_ckpt_path, map_location=device)["state_dict"])
-    # We only need the eye branch — but keeping the whole model around is
-    # cheap (~8 MB) and means we don't have to repackage the checkpoint.
-    return face_model, two_stream.eye_branch
+    return face_model
 
 
 def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
@@ -236,10 +205,6 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                    help="Override the face model checkpoint path. "
                         "Default: artifacts/mobilenet_v2_combined/best.pt "
                         "(the DDD+UTA combined model).")
-    p.add_argument("--eye-ckpt", default=None,
-                   help="Override the two-stream checkpoint path "
-                        "(eye branch is taken from it). "
-                        "Default: artifacts/two_stream/best.pt.")
     p.add_argument("--threshold", type=float, default=0.5,
                    help="Decision threshold on smoothed probability.")
     p.add_argument("--window", type=int, default=30,
@@ -248,10 +213,6 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                    help="Consecutive smoothed samples required to switch alarm state.")
     p.add_argument("--show-fps", action="store_true",
                    help="Print FPS to stdout each second.")
-    p.add_argument("--face-only", action="store_true",
-                   help="Use only the face model (disable eye branch).")
-    p.add_argument("--eye-only", action="store_true",
-                   help="Use only the eye branch (disable face model).")
     return p.parse_args(argv)
 
 
@@ -268,9 +229,8 @@ def main(argv: Iterable[str] | None = None) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"[demo] device={device}")
 
-    face_model, eye_model = _load_models(
-        device, Path(args.artifacts),
-        face_ckpt=args.face_ckpt, eye_ckpt=args.eye_ckpt,
+    face_model = _load_models(
+        device, Path(args.artifacts), face_ckpt=args.face_ckpt,
     )
     smoother = Smoother(window=args.window, threshold=args.threshold,
                         hysteresis=args.hysteresis)
@@ -336,12 +296,8 @@ def main(argv: Iterable[str] | None = None) -> None:
                 frame_idx += 1
 
                 face_bbox = None
-                eye_bbox = None  # crop fed to the CNN eye branch (right eye)
-                eye_bboxes: list[tuple[int, int, int, int]] = []
-                inst_prob: float | None = None
                 smooth_prob: float | None = None
                 p_face: float | None = None
-                p_eye: float | None = None
 
                 if results.face_landmarks:
                     lms = results.face_landmarks[0]
@@ -353,40 +309,11 @@ def main(argv: Iterable[str] | None = None) -> None:
                         int(xs.max()), int(ys.max()),
                         pad_frac=0.15,
                     )
-                    # Eye bboxes — both eyes drawn on the overlay so it
-                    # visibly tracks blinks on either side. Only the right
-                    # eye's crop is fed to the CNN eye branch (it was
-                    # trained on single-eye crops, so feeding both would
-                    # require either two forward passes or stitching).
-                    for idx_set in (RIGHT_EYE_IDX, LEFT_EYE_IDX):
-                        ex = np.array([lms[i].x for i in idx_set]) * w
-                        ey = np.array([lms[i].y for i in idx_set]) * h
-                        crop, bbox = _crop_with_pad(
-                            frame, int(ex.min()), int(ey.min()),
-                            int(ex.max()), int(ey.max()),
-                            pad_frac=0.35,
-                        )
-                        eye_bboxes.append(bbox)
-                        if idx_set is RIGHT_EYE_IDX:
-                            eye_crop = crop
-                            eye_bbox = bbox
 
                     face_tensor = _to_model_input(face_crop, 224, device)
-                    eye_tensor = _to_model_input(eye_crop, 64, device)
-
-                    p_face = None
-                    p_eye = None
-                    probs: list[float] = []
-                    if face_tensor is not None and not args.eye_only:
+                    if face_tensor is not None:
                         p_face = torch.sigmoid(face_model(face_tensor)).item()
-                        probs.append(p_face)
-                    if eye_tensor is not None and not args.face_only:
-                        p_eye = torch.sigmoid(eye_model(eye_tensor)).item()
-                        probs.append(p_eye)
-
-                    if probs:
-                        inst_prob = sum(probs) / len(probs)
-                        smooth_prob, _ = smoother.push(inst_prob)
+                        smooth_prob, _ = smoother.push(p_face)
                 else:
                     # No face detected — don't pollute the buffer with a stale
                     # reading, just leave the smoother alone.
@@ -399,9 +326,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                 fps_inst = 1.0 / dt
                 fps_ema = 0.9 * fps_ema + 0.1 * fps_inst if fps_ema else fps_inst
 
-                _draw_overlay(frame, face_bbox, eye_bboxes,
-                              p_face, p_eye,
-                              inst_prob, smooth_prob,
+                _draw_overlay(frame, face_bbox, p_face, smooth_prob,
                               smoother.state_drowsy, fps_ema)
 
                 if writer is not None:
