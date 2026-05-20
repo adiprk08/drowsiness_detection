@@ -62,21 +62,6 @@ RIGHT_EYE_IDX = [33, 7, 163, 144, 145, 153, 154, 155,
 LEFT_EYE_IDX = [263, 249, 390, 373, 374, 380, 381, 382,
                 362, 398, 384, 385, 386, 387, 388, 466]
 
-# 6-point subsets used for Eye Aspect Ratio (Soukupova & Cech 2016).
-# EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|).
-# Open eye is ~0.25–0.35, closed eye drops below ~0.18.
-#            p1=outer  p2,p3=upper lid   p4=inner  p5,p6=lower lid
-EAR_RIGHT = (33,       160, 158,         133,      153, 144)
-EAR_LEFT  = (263,      387, 385,         362,      380, 373)
-
-# Mouth Aspect Ratio (yawn signal). Same vertical/horizontal idea applied to
-# the lips. Closed mouth gives MAR ≈ 0.02–0.10; a yawn opens the jaw enough
-# to push it past ~0.5. Indices are MediaPipe FaceLandmarker:
-#   61, 291  -> mouth corners (horizontal)
-#   13, 14   -> centre upper/lower lip (inner mouth opening)
-#   78, 308  -> inner corners (extra horizontal anchor)
-MAR_INDICES = (61, 291, 13, 14)
-
 # Auto-downloaded on first run if missing. The float16 bundle is ~3 MB and
 # gives us 478 landmarks (including refined lips/eyes), which is what the
 # older ``solutions.face_mesh`` API returned internally anyway.
@@ -106,32 +91,6 @@ def _crop_with_pad(frame: np.ndarray, x_min: int, y_min: int,
     x1 = min(w, x_max + pad_x)
     y1 = min(h, y_max + pad_y)
     return frame[y0:y1, x0:x1].copy(), (x0, y0, x1, y1)
-
-
-def _eye_aspect_ratio(lms, indices: tuple, w: int, h: int) -> float:
-    """EAR for one eye from six landmark indices (p1..p6 in the standard order)."""
-    def pt(i: int) -> np.ndarray:
-        lm = lms[i]
-        return np.array([lm.x * w, lm.y * h], dtype=np.float32)
-    p1, p2, p3, p4, p5, p6 = (pt(i) for i in indices)
-    horizontal = np.linalg.norm(p1 - p4)
-    if horizontal < 1e-6:
-        return 0.0
-    vertical = np.linalg.norm(p2 - p6) + np.linalg.norm(p3 - p5)
-    return float(vertical / (2.0 * horizontal))
-
-
-def _mouth_aspect_ratio(lms, w: int, h: int) -> float:
-    """MAR — yawn signal. Vertical inner-lip distance / horizontal corner distance."""
-    def pt(i: int) -> np.ndarray:
-        lm = lms[i]
-        return np.array([lm.x * w, lm.y * h], dtype=np.float32)
-    left, right, top, bot = (pt(i) for i in MAR_INDICES)
-    horizontal = np.linalg.norm(left - right)
-    if horizontal < 1e-6:
-        return 0.0
-    vertical = np.linalg.norm(top - bot)
-    return float(vertical / horizontal)
 
 
 def _to_model_input(img_bgr: np.ndarray, target: int,
@@ -196,7 +155,6 @@ class Smoother:
 def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None,
                   eye_bboxes: list[tuple[int, int, int, int]],
                   p_face: float | None, p_eye: float | None,
-                  ear: float | None, mar: float | None,
                   inst_prob: float | None, smooth_prob: float | None,
                   drowsy: bool, fps: float) -> None:
     h, w = frame.shape[:2]
@@ -211,8 +169,6 @@ def _draw_overlay(frame: np.ndarray, face_bbox: tuple[int, int, int, int] | None
     lines = [f"FPS: {fps:5.1f}"]
     lines.append(f"P face: {p_face:.2f}" if p_face is not None else "P face: --")
     lines.append(f"P eye : {p_eye:.2f}" if p_eye is not None else "P eye : --")
-    # EAR / MAR are still computed (and still drive --use-ear mode) but kept
-    # off the overlay — they were diagnostic clutter for the CNN demo.
     if inst_prob is not None:
         lines.append(f"inst   P: {inst_prob:.2f}")
     if smooth_prob is not None:
@@ -296,18 +252,6 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
                    help="Use only the face model (disable eye branch).")
     p.add_argument("--eye-only", action="store_true",
                    help="Use only the eye branch (disable face model).")
-    p.add_argument("--use-ear", action="store_true",
-                   help="Drive the alarm decision from Eye Aspect Ratio "
-                        "(MediaPipe landmarks) instead of the CNN fusion. "
-                        "CNN probs remain visible on the overlay.")
-    p.add_argument("--ear-threshold", type=float, default=0.20,
-                   help="Eye Aspect Ratio below this value counts as "
-                        "'eyes closed / drowsy' (default 0.20). Typical open "
-                        "eye is 0.25–0.35; closed eye falls below ~0.18.")
-    p.add_argument("--mar-threshold", type=float, default=0.55,
-                   help="Mouth Aspect Ratio above this value counts as "
-                        "'yawning' (default 0.55). Closed mouth is ~0.05; "
-                        "a full yawn pushes past ~0.6.")
     return p.parse_args(argv)
 
 
@@ -398,18 +342,9 @@ def main(argv: Iterable[str] | None = None) -> None:
                 smooth_prob: float | None = None
                 p_face: float | None = None
                 p_eye: float | None = None
-                ear: float | None = None
-                mar: float | None = None
 
                 if results.face_landmarks:
                     lms = results.face_landmarks[0]
-                    # Eye Aspect Ratio — classical drowsiness signal from the
-                    # landmarks themselves, independent of the CNNs.
-                    ear_r = _eye_aspect_ratio(lms, EAR_RIGHT, w, h)
-                    ear_l = _eye_aspect_ratio(lms, EAR_LEFT, w, h)
-                    ear = 0.5 * (ear_r + ear_l)
-                    # Mouth Aspect Ratio — yawn signal.
-                    mar = _mouth_aspect_ratio(lms, w, h)
                     # Face bbox from *all* landmarks
                     xs = np.array([lm.x for lm in lms]) * w
                     ys = np.array([lm.y for lm in lms]) * h
@@ -451,23 +386,6 @@ def main(argv: Iterable[str] | None = None) -> None:
 
                     if probs:
                         inst_prob = sum(probs) / len(probs)
-
-                    # Alarm driver: classical (EAR + MAR) if requested, else
-                    # the CNN fusion. EAR/MAR are converted to BINARY events
-                    # (eye-closed = 1, otherwise = 0) so the smoothed value is
-                    # *literal PERCLOS* — the fraction of recent frames in
-                    # which eyes were closed, which is the well-defined
-                    # drowsiness signal from the trucking-industry literature.
-                    # A typical blink (3–5 frames out of 30) contributes only
-                    # ~10–17% PERCLOS, well below the default --threshold 0.5.
-                    if args.use_ear and ear is not None:
-                        ear_closed = 1.0 if ear < args.ear_threshold else 0.0
-                        yawning = 0.0
-                        if mar is not None:
-                            yawning = 1.0 if mar > args.mar_threshold else 0.0
-                        drive = max(ear_closed, yawning)
-                        smooth_prob, _ = smoother.push(drive)
-                    elif inst_prob is not None:
                         smooth_prob, _ = smoother.push(inst_prob)
                 else:
                     # No face detected — don't pollute the buffer with a stale
@@ -482,7 +400,7 @@ def main(argv: Iterable[str] | None = None) -> None:
                 fps_ema = 0.9 * fps_ema + 0.1 * fps_inst if fps_ema else fps_inst
 
                 _draw_overlay(frame, face_bbox, eye_bboxes,
-                              p_face, p_eye, ear, mar,
+                              p_face, p_eye,
                               inst_prob, smooth_prob,
                               smoother.state_drowsy, fps_ema)
 
