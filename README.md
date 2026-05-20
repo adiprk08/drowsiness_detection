@@ -27,19 +27,22 @@ datasets, reporting test macro-F1 separately per domain:
 
 | Model               | DDD test | UTA test | Combined |
 | ------------------- | -------- | -------- | -------- |
-| BaselineCNN         | 0.826    | 0.597    | 0.712    |
-| AlexNet (TL)        | 0.845    | 0.604    | 0.736    |
-| **MobileNetV2 (TL)**| **0.820**| **0.746**| **0.783**|
+| BaselineCNN         | 0.889    | 0.666    | 0.776    |
+| AlexNet (TL)        | 0.938    | 0.595    | 0.776    |
+| **MobileNetV2 (TL)**| **0.887**| **0.740**| **0.813**|
 
 All numbers are macro-F1 at threshold 0.5 on fully held-out,
-subject-disjoint test sets. Adding UTA-RLDD improved DDD performance for
-both transfer-learning models (MobileNetV2 0.705 → 0.820), and AlexNet's
+subject-disjoint test sets. Adding UTA-RLDD and tuning regularisation
+(dropout, weight decay, label smoothing) lifted DDD-test performance well
+past the Experiment-1 baseline (MobileNetV2 0.705 → 0.887), and AlexNet's
 Experiment-1 collapse turned out to be data-bound rather than
-architectural — it recovers to 0.736 with the larger subject pool.
+architectural — it recovers to 0.776 with the larger subject pool.
 
-The **deployment model is MobileNetV2 trained on the combined set** —
-near-tied with AlexNet on accuracy, but 5× smaller and stronger on the
-held-out webcam domain. Full table at
+The **deployment model is MobileNetV2 trained on the combined set**: the
+best combined score (0.813) and by far the strongest on the held-out
+webcam domain (UTA 0.740, vs ≤0.67 for the others). AlexNet edges it on
+cabin-camera DDD but transfers poorly to webcam footage — the domain that
+matters for deployment. Full table at
 [`artifacts/comparison.md`](artifacts/comparison.md); regenerate with
 `py -m src.compare`.
 

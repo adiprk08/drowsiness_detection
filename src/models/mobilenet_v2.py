@@ -46,9 +46,13 @@ def build_mobilenet_v2(*, pretrained: bool = True, freeze_backbone: bool = True,
     # Original head: Dropout(0.2) → Linear(1280, 1000)
     # Replace with binary head. Keep it simple — MobileNetV2's features
     # are strong enough that a linear probe usually suffices.
+    # Dropout raised to 0.5 (from 0.3): the model overfits the combined
+    # DDD+UTA set fast (train F1 ≈ 1.0 within a couple of epochs), and a
+    # stronger dropout on the only fully-trainable layer is the cheapest
+    # brake on that.
     in_features = net.classifier[-1].in_features  # 1280
     net.classifier = nn.Sequential(
-        nn.Dropout(0.3),
+        nn.Dropout(0.5),
         nn.Linear(in_features, num_classes),
     )
     return net

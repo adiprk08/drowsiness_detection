@@ -15,15 +15,15 @@ that keeps validation drowsy recall ≥ 0.95.
 | mobilenet_v2 @safety | 0.05 | 7504 | 0.6514 | 0.5659 | 0.7585 | 0.9940 | 0.6133 |   --   |
 | two_stream (eye) | 0.50 | 16823 | 0.9047 | 0.9023 | 0.8873 | 0.9478 | 0.8341 | 0.9765 |
 | two_stream (face) | 0.50 | 7504 | 0.5003 | 0.4741 | 0.5914 | 0.6565 | 0.5381 | 0.5966 |
-| alexnet_combined (ddd) | 0.50 | 7504 | 0.8461 | 0.8453 | 0.8563 | 0.8326 | 0.8814 |   --   |
-| alexnet_combined (uta) | 0.50 | 7709 | 0.6338 | 0.6044 | 0.4965 | 0.3745 | 0.7365 |   --   |
-| alexnet_combined (combined) | 0.50 | 15213 | 0.7385 | 0.7357 | 0.7085 | 0.6157 | 0.8342 |   --   |
-| baseline_cnn_combined (ddd) | 0.50 | 7504 | 0.8266 | 0.8265 | 0.8211 | 0.7221 | 0.9515 |   --   |
-| baseline_cnn_combined (uta) | 0.50 | 7709 | 0.6044 | 0.5975 | 0.5448 | 0.4910 | 0.6118 |   --   |
-| baseline_cnn_combined (combined) | 0.50 | 15213 | 0.7140 | 0.7121 | 0.6886 | 0.6127 | 0.7859 |   --   |
-| mobilenet_v2_combined (ddd) | 0.50 | 7504 | 0.8201 | 0.8198 | 0.8130 | 0.7097 | 0.9514 |   --   |
-| mobilenet_v2_combined (uta) | 0.50 | 7709 | 0.7486 | 0.7460 | 0.7205 | 0.6720 | 0.7765 |   --   |
-| mobilenet_v2_combined (combined) | 0.50 | 15213 | 0.7839 | 0.7828 | 0.7677 | 0.6919 | 0.8621 |   --   |
+| alexnet_combined (ddd) | 0.50 | 7504 | 0.9396 | 0.9381 | 0.9478 | 0.9947 | 0.9051 |   --   |
+| alexnet_combined (uta) | 0.50 | 7709 | 0.6176 | 0.5948 | 0.4986 | 0.3944 | 0.6778 |   --   |
+| alexnet_combined (combined) | 0.50 | 15213 | 0.7764 | 0.7760 | 0.7664 | 0.7105 | 0.8318 |   --   |
+| baseline_cnn_combined (ddd) | 0.50 | 7504 | 0.8895 | 0.8893 | 0.8942 | 0.8471 | 0.9467 |   --   |
+| baseline_cnn_combined (uta) | 0.50 | 7709 | 0.6664 | 0.6661 | 0.6572 | 0.6632 | 0.6513 |   --   |
+| baseline_cnn_combined (combined) | 0.50 | 15213 | 0.7764 | 0.7764 | 0.7782 | 0.7600 | 0.7973 |   --   |
+| mobilenet_v2_combined (ddd) | 0.50 | 7504 | 0.8874 | 0.8871 | 0.8927 | 0.8505 | 0.9394 |   --   |
+| mobilenet_v2_combined (uta) | 0.50 | 7709 | 0.7416 | 0.7401 | 0.7205 | 0.6909 | 0.7529 |   --   |
+| mobilenet_v2_combined (combined) | 0.50 | 15213 | 0.8135 | 0.8135 | 0.8109 | 0.7749 | 0.8504 |   --   |
 
 **Two-stream caveat.** The eye and face branches are evaluated on
 different held-out subsets (MRL eye crops vs DDD face crops)

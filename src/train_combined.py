@@ -87,6 +87,26 @@ def _pos_weight(labels: list[int]) -> float:
     return (n_neg / n_pos) if n_pos else 1.0
 
 
+class SmoothedBCEWithLogitsLoss(nn.Module):
+    """BCE-with-logits with label smoothing.
+
+    Hard targets {0, 1} are softened to {eps, 1-eps} before the loss, so
+    the model is not rewarded for driving its logits to extremes. A mild
+    regulariser against overfitting that also tempers the overconfident,
+    saturated predictions seen in the live demo. ``pos_weight`` passes
+    straight through to the underlying BCE.
+    """
+
+    def __init__(self, smoothing: float, pos_weight: torch.Tensor | None = None):
+        super().__init__()
+        self.smoothing = smoothing
+        self.bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        targets = targets * (1.0 - 2.0 * self.smoothing) + self.smoothing
+        return self.bce(logits, targets)
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -110,7 +130,13 @@ def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--lr", type=float, default=3e-4)
-    p.add_argument("--weight-decay", type=float, default=1e-4)
+    p.add_argument("--weight-decay", type=float, default=1e-3,
+                   help="AdamW weight decay. Raised from 1e-4 to 1e-3 as an "
+                        "anti-overfitting measure on the combined set.")
+    p.add_argument("--label-smoothing", type=float, default=0.05,
+                   help="Soften the {0,1} targets to {eps, 1-eps} before BCE. "
+                        "Curbs overconfident logits — mild regulariser that "
+                        "also tempers the live-demo saturation. 0 disables.")
     p.add_argument("--num-workers", type=int, default=4)
     p.add_argument("--patience", type=int, default=3,
                    help="Early-stopping patience on combined-val macro-F1.")
@@ -238,7 +264,12 @@ def main(argv: Iterable[str] | None = None) -> None:
     total = sum(p.numel() for p in model.parameters())
     print(f"[train_combined] params: {trainable:,} trainable / {total:,} total")
 
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    if args.label_smoothing > 0:
+        criterion = SmoothedBCEWithLogitsLoss(args.label_smoothing,
+                                              pos_weight=pos_weight)
+        print(f"[train_combined] label smoothing = {args.label_smoothing}")
+    else:
+        criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = AdamW(
         [p for p in model.parameters() if p.requires_grad],
         lr=args.lr, weight_decay=args.weight_decay,
