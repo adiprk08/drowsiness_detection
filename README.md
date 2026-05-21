@@ -46,6 +46,15 @@ matters for deployment. Full table at
 [`artifacts/comparison.md`](artifacts/comparison.md); regenerate with
 `py -m src.compare`.
 
+**Calibrated operating points.** All three combined models are
+threshold-calibrated: `src.calibrate` sweeps the decision threshold on the
+combined validation set and selects a *safety* operating point — the
+largest threshold that still keeps validation drowsy recall ≥ 0.95, since
+a missed microsleep costs more than a false alarm. For the deployment
+MobileNetV2 that point is threshold 0.08, lifting combined-test drowsy
+recall to 0.956. The `@safety` rows in `artifacts/comparison.md` report
+each calibrated point per evaluation domain.
+
 ## Layout
 
 ```
@@ -72,14 +81,17 @@ drowsiness_detection/
 │   ├── train_fusion.py           trains the two-stream fusion model
 │   ├── eval.py                   test-set evaluation for single-stream models
 │   ├── eval_fusion.py            per-branch test-set evaluation for two-stream
-│   ├── calibrate.py              threshold sweep + safety operating point
+│   ├── calibrate.py              threshold sweep + safety point (DDD-only or --combined)
 │   ├── compare.py                renders artifacts/comparison.md
+│   ├── report_figures.py         confusion matrices, training curves, dataset table, crops
 │   ├── realtime_demo.py          live single-stream webcam demo
 │   └── smoke_test.py             synthetic-data sanity check
-└── artifacts/                    saved metrics, confusion matrices, calibration
+└── artifacts/                    metrics, confusion matrices, curves, calibration
     ├── baseline_cnn/  alexnet/  mobilenet_v2/        DDD-only runs
-    ├── baseline_cnn_combined/  alexnet_combined/  mobilenet_v2_combined/
+    ├── baseline_cnn_combined/  alexnet_combined/  mobilenet_v2_combined/   combined runs
     ├── two_stream/
+    ├── dataset_summary.md        dataset + split frame counts
+    ├── sample_crops.png          example alert/drowsy crops per dataset
     └── comparison.md             side-by-side test results
 ```
 
@@ -166,16 +178,20 @@ extracted frames), reporting test metrics per domain. Output goes to
 `artifacts/<model>_combined/`. `--uta-only` / `--ddd-only` run the
 single-dataset ablations.
 
-### 6. Evaluate and calibrate (Experiment-1 models)
+### 6. Evaluate and calibrate
 
 ```powershell
-py -m src.eval --model mobilenet_v2
-py -m src.eval_fusion
-py -m src.calibrate --model mobilenet_v2
+py -m src.eval --model mobilenet_v2                    # DDD-only test eval
+py -m src.eval_fusion                                  # two-stream per-branch eval
+py -m src.calibrate --model mobilenet_v2               # calibrate a DDD-only model
+py -m src.calibrate --model mobilenet_v2 --combined    # calibrate a combined model
 ```
 
 `calibrate` sweeps the decision threshold on validation and picks a safety
 operating point (largest threshold keeping val drowsy recall ≥ 0.95).
+`--combined` calibrates a `train_combined` model — it reconstructs the
+DDD+UTA validation/test splits from the checkpoint, sweeps on the combined
+validation set, and reports each operating point per domain.
 
 ### 7. Render the comparison table
 
@@ -187,7 +203,17 @@ Auto-discovers every `artifacts/*/test_metrics.json` — DDD-only runs,
 combined runs, and the two-stream model — and writes
 `artifacts/comparison.md`.
 
-### 8. Run the real-time demo
+### 8. Generate the report figures
+
+```powershell
+py -m src.report_figures --model all
+```
+
+Writes a per-domain confusion matrix and train/validation curves for each
+combined model, plus a dataset summary table and a montage of sample
+crops, into `artifacts/`. `--model` and `--figures` select a subset.
+
+### 9. Run the real-time demo
 
 ```powershell
 py -m src.realtime_demo
@@ -236,7 +262,7 @@ threshold before the alarm state flips, which stops flickering.
 - **Distribution shift, largely closed.** The Experiment-1 models, trained
   only on cabin-camera (DDD) imagery, saturate on consumer webcams.
   Integrating UTA-RLDD — consumer webcam/phone footage — closed most of
-  this gap: the combined MobileNetV2 reaches 0.746 macro-F1 on held-out
+  this gap: the combined MobileNetV2 reaches 0.740 macro-F1 on held-out
   UTA subjects and the live demo tracks eye state under normal lighting.
 - **Subtle drowsiness is hard frame-wise.** UTA-RLDD labels whole videos,
   so individual "drowsy" frames are noisy, and its drowsiness is subtle by
