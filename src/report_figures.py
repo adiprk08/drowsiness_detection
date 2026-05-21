@@ -20,9 +20,9 @@ Everything is read-only on the data; outputs land in `artifacts/`.
 
 Usage
 -----
-    py -m src.report_figures                       # all four
-    py -m src.report_figures --figures confusion   # just one
-    py -m src.report_figures --figures confusion,curves,table,crops
+    py -m src.report_figures                                  # mobilenet_v2, all four
+    py -m src.report_figures --model all                      # confusion+curves x 3 archs
+    py -m src.report_figures --model alexnet --figures confusion,curves
 """
 
 from __future__ import annotations
@@ -41,11 +41,22 @@ import numpy as np
 # ---------------------------------------------------------------------------
 
 ART = Path("artifacts")
-COMBINED_DIR = ART / "mobilenet_v2_combined"
 DB = Path("data/drowsiness.db")
 UTA = Path("data/uta_rldd_frames")
 
 LABELS = ["alert", "drowsy"]
+
+# Display names for the three combined single-stream architectures.
+MODEL_NAMES = {
+    "baseline_cnn": "BaselineCNN",
+    "alexnet": "AlexNet",
+    "mobilenet_v2": "MobileNetV2",
+}
+
+
+def _combined_dir(model: str) -> Path:
+    """Artifacts folder for a `src.train_combined` model."""
+    return ART / f"{model}_combined"
 DOMAIN_TITLES = {
     "ddd": "DDD (cabin camera)",
     "uta": "UTA-RLDD (webcam)",
@@ -82,16 +93,19 @@ def _plot_confusion(ax, cm: np.ndarray, title: str) -> None:
                     color="white" if norm[i, j] > 0.5 else "black")
 
 
-def figure_confusion(out: Path | None = None) -> Path:
-    cal_path = COMBINED_DIR / "calibration.json"
+def figure_confusion(model: str = "mobilenet_v2",
+                     out: Path | None = None) -> Path:
+    model_dir = _combined_dir(model)
+    cal_path = model_dir / "calibration.json"
     if not cal_path.exists():
         raise FileNotFoundError(
-            f"{cal_path} not found — run `py -m src.calibrate "
-            f"--model mobilenet_v2 --combined` first."
+            f"{cal_path} not found - run `py -m src.calibrate "
+            f"--model {model} --combined` first."
         )
     cal = json.loads(cal_path.read_text(encoding="utf-8"))
     op = cal["operating_points"]["default_0.5"]
     thr = op["threshold"]
+    name = MODEL_NAMES.get(model, model)
 
     plt = _mpl()
     domains = ["ddd", "uta", "combined"]
@@ -102,14 +116,14 @@ def figure_confusion(out: Path | None = None) -> Path:
         mf1 = op["test"][d]["macro_f1"]
         _plot_confusion(ax, cm, f"{DOMAIN_TITLES[d]}\nmacro-F1 = {mf1:.3f}")
     fig.suptitle(
-        f"MobileNetV2 (DDD+UTA combined) - held-out test confusion, "
+        f"{name} (DDD+UTA combined) - held-out test confusion, "
         f"threshold {thr:.2f}", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
 
-    out = out or COMBINED_DIR / "confusion_test.png"
+    out = out or model_dir / "confusion_test.png"
     fig.savefig(out, dpi=140)
     plt.close(fig)
-    print(f"[report_figures] confusion matrix -> {out}")
+    print(f"[report_figures] {model}: confusion matrix -> {out}")
     return out
 
 
@@ -117,10 +131,13 @@ def figure_confusion(out: Path | None = None) -> Path:
 # 2. Training curves — train vs. val macro-F1 and loss
 # ---------------------------------------------------------------------------
 
-def figure_training_curves(out: Path | None = None) -> Path:
-    hist_path = COMBINED_DIR / "history.json"
+def figure_training_curves(model: str = "mobilenet_v2",
+                           out: Path | None = None) -> Path:
+    model_dir = _combined_dir(model)
+    hist_path = model_dir / "history.json"
     if not hist_path.exists():
         raise FileNotFoundError(f"{hist_path} not found.")
+    name = MODEL_NAMES.get(model, model)
     h = json.loads(hist_path.read_text(encoding="utf-8"))
     hist = h["history"]
     best = h.get("best_epoch")
@@ -161,15 +178,15 @@ def figure_training_curves(out: Path | None = None) -> Path:
     a2.grid(alpha=0.3)
     a2.legend(loc="upper right", fontsize=8)
 
-    fig.suptitle("MobileNetV2 (DDD+UTA combined) - training history",
+    fig.suptitle(f"{name} (DDD+UTA combined) - training history",
                  fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
 
-    out = out or COMBINED_DIR / "training_curves.png"
+    out = out or model_dir / "training_curves.png"
     fig.savefig(out, dpi=140)
     plt.close(fig)
     gap = train_f1[best - 1] - val_f1["combined"][best - 1] if best else 0.0
-    print(f"[report_figures] training curves -> {out}  "
+    print(f"[report_figures] {model}: training curves -> {out}  "
           f"(train-val macro-F1 gap at best epoch: {gap:+.3f})")
     return out
 
@@ -371,20 +388,29 @@ def figure_sample_crops(out: Path | None = None) -> Path:
 # CLI
 # ---------------------------------------------------------------------------
 
-_FIGURES = {
+# Per-model figures take a `model` argument; global figures don't.
+_PER_MODEL = {
     "confusion": figure_confusion,
     "curves": figure_training_curves,
+}
+_GLOBAL = {
     "table": figure_dataset_table,
     "crops": figure_sample_crops,
 }
+_FIGURES = {**_PER_MODEL, **_GLOBAL}
 
 
 def _parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Generate report figures for the combined model.")
+        description="Generate report figures for the combined models.")
     p.add_argument("--figures", default="all",
                    help="Comma-separated subset of: "
                         f"{', '.join(_FIGURES)} (default: all).")
+    p.add_argument("--model", default="mobilenet_v2",
+                   help="Architecture(s) for the per-model figures "
+                        "(confusion, curves): baseline_cnn, alexnet, "
+                        "mobilenet_v2 - comma-separated, or 'all'. The "
+                        "global figures (table, crops) ignore this.")
     return p.parse_args(argv)
 
 
@@ -398,9 +424,26 @@ def main(argv: Iterable[str] | None = None) -> None:
     if unknown:
         raise SystemExit(f"unknown figure(s): {unknown}. "
                          f"choose from {list(_FIGURES)}")
+
+    if args.model.strip().lower() == "all":
+        models = list(MODEL_NAMES)
+    else:
+        models = [m.strip() for m in args.model.split(",") if m.strip()]
+    bad = [m for m in models if m not in MODEL_NAMES]
+    if bad:
+        raise SystemExit(f"unknown model(s): {bad}. "
+                         f"choose from {list(MODEL_NAMES)}")
+
+    made = 0
     for name in wanted:
-        _FIGURES[name]()
-    print(f"[report_figures] done ({len(wanted)} artefact(s)).")
+        if name in _PER_MODEL:
+            for m in models:
+                _PER_MODEL[name](model=m)
+                made += 1
+        else:
+            _GLOBAL[name]()
+            made += 1
+    print(f"[report_figures] done ({made} artefact(s)).")
 
 
 if __name__ == "__main__":

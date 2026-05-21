@@ -18,9 +18,15 @@ that keeps validation drowsy recall ≥ 0.95.
 | alexnet_combined (ddd) | 0.50 | 7504 | 0.9396 | 0.9381 | 0.9478 | 0.9947 | 0.9051 |   --   |
 | alexnet_combined (uta) | 0.50 | 7709 | 0.6176 | 0.5948 | 0.4986 | 0.3944 | 0.6778 |   --   |
 | alexnet_combined (combined) | 0.50 | 15213 | 0.7764 | 0.7760 | 0.7664 | 0.7105 | 0.8318 |   --   |
+| alexnet_combined @safety (ddd) | 0.36 | 7504 | 0.7016 | 0.6449 | 0.7868 | 0.9995 | 0.6488 |   --   |
+| alexnet_combined @safety (uta) | 0.36 | 7709 | 0.6439 | 0.6439 | 0.6450 | 0.6710 | 0.6210 |   --   |
+| alexnet_combined @safety (combined) | 0.36 | 15213 | 0.6724 | 0.6589 | 0.7267 | 0.8440 | 0.6380 |   --   |
 | baseline_cnn_combined (ddd) | 0.50 | 7504 | 0.8895 | 0.8893 | 0.8942 | 0.8471 | 0.9467 |   --   |
 | baseline_cnn_combined (uta) | 0.50 | 7709 | 0.6664 | 0.6661 | 0.6572 | 0.6632 | 0.6513 |   --   |
 | baseline_cnn_combined (combined) | 0.50 | 15213 | 0.7764 | 0.7764 | 0.7782 | 0.7600 | 0.7973 |   --   |
+| baseline_cnn_combined @safety (ddd) | 0.05 | 7504 | 0.5982 | 0.4617 | 0.7328 | 1.0000 | 0.5783 |   --   |
+| baseline_cnn_combined @safety (uta) | 0.05 | 7709 | 0.4923 | 0.3504 | 0.6540 | 0.9952 | 0.4870 |   --   |
+| baseline_cnn_combined @safety (combined) | 0.05 | 15213 | 0.5445 | 0.4043 | 0.6933 | 0.9977 | 0.5313 |   --   |
 | mobilenet_v2_combined (ddd) | 0.50 | 7504 | 0.8874 | 0.8871 | 0.8927 | 0.8505 | 0.9394 |   --   |
 | mobilenet_v2_combined (uta) | 0.50 | 7709 | 0.7416 | 0.7401 | 0.7205 | 0.6909 | 0.7529 |   --   |
 | mobilenet_v2_combined (combined) | 0.50 | 15213 | 0.8135 | 0.8135 | 0.8109 | 0.7749 | 0.8504 |   --   |
