@@ -19,7 +19,9 @@ Any ``src.train_combined`` output folders (``<model>_combined``,
 ``<model>_uta_only``, ``<model>_ddd_only``) are auto-discovered. Their
 ``test_metrics.json`` is nested by evaluation domain, so each produces
 one row per domain (DDD / UTA / combined) — that per-domain breakdown is
-the point of the combined-training experiment.
+the point of the combined-training experiment. If a combined model also
+has a ``calibration.json`` (from ``src.calibrate --combined``), its
+safety operating point adds a matching ``@safety`` row per domain.
 
 Usage
 -----
@@ -130,6 +132,24 @@ def _read_combined(art: Path, name: str) -> list[dict]:
             rows.append(_row(f"{name} ({domain})", data[domain], threshold="0.50"))
     else:
         rows.append(_row(name, data, threshold="0.50"))
+
+    # Safety-threshold rows, if `src.calibrate --combined` has been run on
+    # this model. The combined calibration.json nests its test metrics by
+    # evaluation domain, so we emit one @safety row per domain — mirroring
+    # the per-domain default rows above.
+    cal_json = art / name / "calibration.json"
+    if cal_json.exists():
+        cal = json.loads(cal_json.read_text(encoding="utf-8"))
+        safety = cal.get("operating_points", {}).get("recall_≥_0.95_on_val")
+        test = safety.get("test") if safety else None
+        if isinstance(test, dict):
+            t = safety.get("threshold")
+            thr = f"{t:.2f}" if isinstance(t, (int, float)) else str(t)
+            ordered = [d for d in ("ddd", "uta", "combined") if d in test]
+            ordered += [k for k in test if k not in ordered]
+            for domain in ordered:
+                rows.append(_row(f"{name} @safety ({domain})",
+                                 test[domain], threshold=thr))
     return rows
 
 
@@ -241,7 +261,11 @@ def main(argv: Iterable[str] | None = None) -> None:
         "appear as one row per evaluation domain — `(ddd)` is the original\n"
         "cabin-camera test split, `(uta)` is the held-out UTA-RLDD webcam\n"
         "subjects, `(combined)` is both pooled. ROC-AUC is blank for these\n"
-        "rows because `train_combined` records macro-F1 metrics only.\n"
+        "rows because `train_combined` records macro-F1 metrics only. The\n"
+        "`@safety` rows for a combined model use the threshold swept on its\n"
+        "**combined** validation set (the same signal `train_combined` uses\n"
+        "for early stopping), then report each domain at that threshold —\n"
+        "so per-domain recall there can sit either side of 0.95.\n"
     )
     md_path.write_text(md, encoding="utf-8")
     print(f"[compare] wrote {md_path}")

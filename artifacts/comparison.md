@@ -24,6 +24,9 @@ that keeps validation drowsy recall ≥ 0.95.
 | mobilenet_v2_combined (ddd) | 0.50 | 7504 | 0.8874 | 0.8871 | 0.8927 | 0.8505 | 0.9394 |   --   |
 | mobilenet_v2_combined (uta) | 0.50 | 7709 | 0.7416 | 0.7401 | 0.7205 | 0.6909 | 0.7529 |   --   |
 | mobilenet_v2_combined (combined) | 0.50 | 15213 | 0.8135 | 0.8135 | 0.8109 | 0.7749 | 0.8504 |   --   |
+| mobilenet_v2_combined @safety (ddd) | 0.08 | 7504 | 0.8726 | 0.8655 | 0.8964 | 1.0000 | 0.8122 |   --   |
+| mobilenet_v2_combined @safety (uta) | 0.08 | 7709 | 0.6272 | 0.6028 | 0.7012 | 0.9072 | 0.5714 |   --   |
+| mobilenet_v2_combined @safety (combined) | 0.08 | 15213 | 0.7482 | 0.7331 | 0.7967 | 0.9561 | 0.6829 |   --   |
 
 **Two-stream caveat.** The eye and face branches are evaluated on
 different held-out subsets (MRL eye crops vs DDD face crops)
@@ -34,4 +37,8 @@ directly comparable to each other or to a single fused model.
 appear as one row per evaluation domain — `(ddd)` is the original
 cabin-camera test split, `(uta)` is the held-out UTA-RLDD webcam
 subjects, `(combined)` is both pooled. ROC-AUC is blank for these
-rows because `train_combined` records macro-F1 metrics only.
+rows because `train_combined` records macro-F1 metrics only. The
+`@safety` rows for a combined model use the threshold swept on its
+**combined** validation set (the same signal `train_combined` uses
+for early stopping), then report each domain at that threshold —
+so per-domain recall there can sit either side of 0.95.
